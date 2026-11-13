@@ -2,8 +2,6 @@
 
 Plataforma local de telemetría eléctrica: simulador → edge (normaliza/valida/deadband) → Redpanda → procesamiento → PostgreSQL/TimescaleDB + MinIO → FastAPI + Grafana, con **FinOps** integrado (medición de uso, modelo de costos GCP-equivalente, palancas de ahorro y presupuestos).
 
-Todo corre en tu máquina. Nada sale a internet (salvo la descarga inicial de imágenes y paquetes).
-
 ## 1. Requisitos (instalar una vez)
 
 | Qué | Para qué | Comprobar |
