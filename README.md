@@ -166,6 +166,4 @@ tests/        unit (sin Docker)
 - **Cambié los SQL y no se aplican**: solo corren al crear el volumen → `docker compose --profile core down -v`.
 - **Airflow tarda** en el primer arranque (instala paquetes y migra BD): mira `docker compose logs -f airflow`.
 
-## 9. Fuera de alcance de esta primera versión
 
-Colectores reales (Modbus/IEC 104/IEC 61850 son *stubs* con el contrato definido), autenticación en la API, TLS, `PubSubPublisher`/`GCSStorage` (la interfaz ya está: `MessagePublisher`, `ObjectStorage`), Apache Beam/Spark/Flink.
