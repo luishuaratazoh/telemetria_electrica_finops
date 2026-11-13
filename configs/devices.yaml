@@ -1,0 +1,12 @@
+protection_relay:
+  manufacturer: Schweitzer Engineering Laboratories
+  models: ["SEL-751", "SEL-751A", "SEL-787"]
+  prefix: SEL_751
+smart_meter:
+  manufacturer: Itron
+  models: ["OpenWay Riva", "SL7000"]
+  prefix: MTR
+breaker:
+  manufacturer: ABB
+  models: ["VD4", "HD4"]
+  prefix: BRK

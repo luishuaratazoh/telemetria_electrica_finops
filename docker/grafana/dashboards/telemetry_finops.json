@@ -1,0 +1,84 @@
+{
+  "uid": "telemetry-finops",
+  "title": "Telemetria Electrica + FinOps",
+  "tags": ["telemetry", "finops"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "15s",
+  "time": { "from": "now-30m", "to": "now" },
+  "panels": [
+    {
+      "id": 1, "type": "timeseries", "title": "Mensajes publicados por topic (msg/s)",
+      "datasource": { "type": "prometheus", "uid": "prom" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [ { "refId": "A", "expr": "sum by (label) (rate(telemetry_messages_published_total[1m]))", "legendFormat": "{{label}}" } ]
+    },
+    {
+      "id": 2, "type": "timeseries", "title": "Filas insertadas en PostgreSQL (filas/s)",
+      "datasource": { "type": "prometheus", "uid": "prom" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [ { "refId": "A", "expr": "sum by (label) (rate(telemetry_rows_inserted_total[1m]))", "legendFormat": "{{label}}" } ]
+    },
+    {
+      "id": 3, "type": "stat", "title": "Ahorro por deadband (FinOps)",
+      "datasource": { "type": "prometheus", "uid": "prom" },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 8 },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1 }, "overrides": [] },
+      "targets": [ { "refId": "A", "expr": "sum(telemetry_messages_suppressed_total) / (sum(telemetry_messages_suppressed_total) + sum(telemetry_messages_published_total{label=\"telemetry.raw\"}))" } ]
+    },
+    {
+      "id": 4, "type": "stat", "title": "Costo mensual estimado GCP (volumen medido, USD)",
+      "datasource": { "type": "postgres", "uid": "pg" },
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 8 },
+      "fieldConfig": { "defaults": { "unit": "currencyUSD", "decimals": 2 }, "overrides": [] },
+      "targets": [ { "refId": "A", "format": "table", "rawQuery": true, "editorMode": "code",
+        "rawSql": "SELECT COALESCE(SUM(est_cost_usd), 0) AS cost FROM finops.v_latest_cost_estimates WHERE scenario = 'gcp_measured'" } ]
+    },
+    {
+      "id": 5, "type": "stat", "title": "Costo mensual proyectado flota completa (USD)",
+      "datasource": { "type": "postgres", "uid": "pg" },
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 8 },
+      "fieldConfig": { "defaults": { "unit": "currencyUSD", "decimals": 0 }, "overrides": [] },
+      "targets": [ { "refId": "A", "format": "table", "rawQuery": true, "editorMode": "code",
+        "rawSql": "SELECT COALESCE(SUM(est_cost_usd), 0) AS cost FROM finops.v_latest_cost_estimates WHERE scenario = 'gcp_full_scale'" } ]
+    },
+    {
+      "id": 6, "type": "piechart", "title": "Calidad de datos (ultima hora)",
+      "datasource": { "type": "postgres", "uid": "pg" },
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 8 },
+      "targets": [ { "refId": "A", "format": "table", "rawQuery": true, "editorMode": "code",
+        "rawSql": "SELECT quality, COUNT(*) AS n FROM telemetry.measurements WHERE event_time > now() - INTERVAL '1 hour' GROUP BY quality" } ]
+    },
+    {
+      "id": 7, "type": "timeseries", "title": "Filas ingeridas por minuto (tabla measurements)",
+      "datasource": { "type": "postgres", "uid": "pg" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 13 },
+      "targets": [ { "refId": "A", "format": "time_series", "rawQuery": true, "editorMode": "code",
+        "rawSql": "SELECT time_bucket('1 minute', ingest_time) AS time, COUNT(*) AS rows FROM telemetry.measurements WHERE $__timeFilter(ingest_time) GROUP BY 1 ORDER BY 1" } ]
+    },
+    {
+      "id": 8, "type": "bargauge", "title": "Almacenamiento por tabla",
+      "datasource": { "type": "postgres", "uid": "pg" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 13 },
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] },
+      "options": { "orientation": "horizontal", "displayMode": "gradient" },
+      "targets": [ { "refId": "A", "format": "table", "rawQuery": true, "editorMode": "code",
+        "rawSql": "SELECT table_name, bytes FROM finops.v_storage_by_table WHERE bytes > 0 ORDER BY bytes DESC LIMIT 10" } ]
+    },
+    {
+      "id": 9, "type": "table", "title": "Desglose de costo por recurso (flota completa, USD/mes)",
+      "datasource": { "type": "postgres", "uid": "pg" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 21 },
+      "targets": [ { "refId": "A", "format": "table", "rawQuery": true, "editorMode": "code",
+        "rawSql": "SELECT resource, ROUND(quantity::numeric, 1) AS quantity, unit, unit_cost_usd, est_cost_usd FROM finops.v_latest_cost_estimates WHERE scenario = 'gcp_full_scale' ORDER BY est_cost_usd DESC" } ]
+    },
+    {
+      "id": 10, "type": "table", "title": "Ultimos disparos (trips)",
+      "datasource": { "type": "postgres", "uid": "pg" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 21 },
+      "targets": [ { "refId": "A", "format": "table", "rawQuery": true, "editorMode": "code",
+        "rawSql": "SELECT event_time, substation_code, asset_id, severity, details FROM events.v_trips ORDER BY event_time DESC LIMIT 20" } ]
+    }
+  ]
+}

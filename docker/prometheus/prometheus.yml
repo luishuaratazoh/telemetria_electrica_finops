@@ -1,0 +1,26 @@
+global:
+  scrape_interval: 15s     # FinOps: 15s es suficiente; menor intervalo = mas series almacenadas
+  evaluation_interval: 30s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # Cada proceso puede correr en contenedor (nombre de servicio) o en tu maquina (host.docker.internal).
+  - job_name: api
+    static_configs:
+      - targets: ["api:8000", "host.docker.internal:8000"]
+
+  - job_name: consumer
+    static_configs:
+      - targets: ["consumer:8001", "host.docker.internal:8001"]
+
+  - job_name: simulator
+    static_configs:
+      - targets: ["simulator:8002", "host.docker.internal:8002"]
+
+  - job_name: redpanda
+    metrics_path: /public_metrics
+    static_configs:
+      - targets: ["redpanda:9644"]

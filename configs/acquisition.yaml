@@ -1,0 +1,23 @@
+# Deadband = no publicar si el valor casi no cambio. Es la palanca FinOps mas fuerte en ingestion:
+# menos mensajes -> menos trafico Kafka/Pub/Sub, menos filas, menos almacenamiento.
+deadband:
+  enabled: true
+  heartbeat_seconds: 60        # aun sin cambios, se publica al menos 1 vez por minuto
+  thresholds_pct:              # cambio relativo minimo (%) para publicar
+    voltage: 0.5
+    current: 3.0
+    active_power: 3.0
+    reactive_power: 3.0
+    frequency: 0.03
+
+buffer:
+  max_items: 200000            # buffer local si el broker no esta disponible
+
+kafka:
+  linger_ms: 50
+  batch_num_messages: 10000
+  compression: lz4             # FinOps: reduce bytes en red y en disco del broker
+
+files:
+  poll_seconds: 5
+  delete_after_upload: true    # FinOps: no acumular archivos locales

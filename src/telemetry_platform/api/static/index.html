@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Telemetría Eléctrica</title>
+<style>
+  :root {
+    --bg: #f5f6f8; --panel: #fff; --text: #1c2330; --muted: #667085; --line: #e2e5ea;
+    --accent: #1f6feb; --accent-soft: #e8f0fe; --ok: #1a7f37; --warn: #b54708; --bad: #c0262d;
+    --ok-bg: #e6f4ea; --warn-bg: #fff4e0; --bad-bg: #fdecea; --head: #eef1f5;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12161c; --panel: #1b2029; --text: #e6e9ef; --muted: #98a2b3; --line: #2c3340;
+      --accent: #5b9cff; --accent-soft: #1d2b44; --ok: #56d364; --warn: #f0b35a; --bad: #ff7b72;
+      --ok-bg: #16301f; --warn-bg: #3a2c13; --bad-bg: #3d1a1c; --head: #232a36;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  header { padding: 14px 20px; background: var(--panel); border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  header h1 { font-size: 17px; margin: 0; font-weight: 650; }
+  header .sub { color: var(--muted); font-size: 12.5px; }
+  .status { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
+  .dot.ok { background: var(--ok); } .dot.bad { background: var(--bad); }
+  main { padding: 16px 20px 40px; max-width: 1500px; margin: 0 auto; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin-bottom: 14px; }
+  .row { display: flex; flex-wrap: wrap; gap: 12px 16px; align-items: flex-end; }
+  label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); font-weight: 600; }
+  select, input { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 7px; padding: 7px 9px; min-width: 150px; }
+  select:focus, input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  #dataset { min-width: 300px; font-weight: 600; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .seg button { border: 0; background: var(--bg); color: var(--text); padding: 8px 16px; cursor: pointer; font: inherit; font-weight: 600; }
+  .seg button + button { border-left: 1px solid var(--line); }
+  .seg button.on { background: var(--accent); color: #fff; }
+  button.act { background: var(--accent); color: #fff; border: 0; border-radius: 7px; padding: 8px 16px; font: inherit; font-weight: 600; cursor: pointer; }
+  button.ghost { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 7px; padding: 7px 12px; font: inherit; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .hint { color: var(--muted); font-size: 12.5px; margin-top: 10px; }
+  .bar { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+  .bar .info { color: var(--muted); font-size: 12.5px; }
+  .bar .sp { margin-left: auto; display: flex; gap: 8px; }
+  .live { display: none; align-items: center; gap: 6px; color: var(--ok); font-weight: 600; font-size: 12.5px; }
+  .live.on { display: inline-flex; }
+  .live i { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); animation: pulse 1.2s infinite; }
+  @keyframes pulse { 50% { opacity: .25; } }
+  .tablewrap { overflow: auto; max-height: 62vh; border: 1px solid var(--line); border-radius: 8px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th { position: sticky; top: 0; background: var(--head); text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); cursor: pointer; white-space: nowrap; user-select: none; z-index: 1; }
+  th .arrow { color: var(--accent); margin-left: 4px; }
+  td { padding: 6px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; max-width: 420px; overflow: hidden; text-overflow: ellipsis; }
+  tr:hover td { background: var(--accent-soft); }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .badge { padding: 2px 8px; border-radius: 999px; font-size: 11.5px; font-weight: 700; }
+  .b-ok { background: var(--ok-bg); color: var(--ok); } .b-warn { background: var(--warn-bg); color: var(--warn); } .b-bad { background: var(--bad-bg); color: var(--bad); }
+  .empty { padding: 36px; text-align: center; color: var(--muted); }
+  .error { background: var(--bad-bg); color: var(--bad); border-radius: 8px; padding: 10px 14px; margin-bottom: 10px; display: none; white-space: pre-wrap; }
+  a.dl { color: var(--accent); cursor: pointer; font-weight: 600; text-decoration: none; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Telemetría Eléctrica</h1>
+  <span class="sub">Consumo de la API · datos desde PostgreSQL/TimescaleDB</span>
+  <div class="status"><span class="dot" id="healthDot"></span><span id="healthTxt">comprobando API…</span></div>
+</header>
+
+<main>
+  <section class="panel">
+    <div class="row">
+      <label>Datos a consultar
+        <select id="dataset"></select>
+      </label>
+      <label>Modo
+        <span class="seg" id="modeSeg">
+          <button data-mode="hist" class="on" type="button">Histórico</button>
+          <button data-mode="live" type="button">Online</button>
+        </span>
+      </label>
+      <label id="refreshWrap" class="hidden">Refrescar cada
+        <select id="refresh">
+          <option value="2">2 s</option><option value="5" selected>5 s</option>
+          <option value="10">10 s</option><option value="30">30 s</option>
+        </select>
+      </label>
+      <label id="windowWrap" class="hidden">Ventana online
+        <select id="window">
+          <option value="5">últimos 5 min</option><option value="15" selected>últimos 15 min</option>
+          <option value="60">última hora</option><option value="360">últimas 6 h</option>
+          <option value="1440">últimas 24 h</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="row" id="filters" style="margin-top:14px"></div>
+    <div class="row" id="timeRow" style="margin-top:14px">
+      <label>Desde (fecha y hora)<input type="datetime-local" id="from" step="1"></label>
+      <label>Hasta (fecha y hora)<input type="datetime-local" id="to" step="1"></label>
+      <button class="ghost" type="button" id="quick1h">Última hora</button>
+      <button class="ghost" type="button" id="quick24h">Últimas 24 h</button>
+      <button class="ghost" type="button" id="quickClear">Sin rango</button>
+    </div>
+    <div class="row" style="margin-top:14px">
+      <button class="act" type="button" id="go">Consultar</button>
+      <span class="live" id="liveTag"><i></i> en vivo</span>
+    </div>
+    <div class="hint" id="hint"></div>
+  </section>
+
+  <section class="panel">
+    <div class="error" id="err"></div>
+    <div class="bar">
+      <input id="search" placeholder="Buscar en la tabla…" style="min-width:240px">
+      <span class="info" id="info"></span>
+      <div class="sp">
+        <button class="ghost" type="button" id="csv">Descargar CSV</button>
+      </div>
+    </div>
+    <div class="tablewrap"><table><thead id="thead"></thead><tbody id="tbody"></tbody></table></div>
+  </section>
+</main>
+
+<script>
+"use strict";
+/* ---------- Catálogo de datos: cada entrada = un endpoint de la API ---------- */
+const VARS_RELAY = ["active_power", "reactive_power", "apparent_power", "voltage", "current", "frequency"];
+const lim = (def = 200) => ({ key: "limit", label: "Máx. filas", type: "number", def, min: 1, max: 5000 });
+const DATASETS = [
+  { id: "substations", name: "Subestaciones", url: () => "/substations", filters: [], cols: ["code", "name", "region", "load_profile", "devices", "latitude", "longitude"] },
+  { id: "devices", name: "Dispositivos", filters: [
+      { key: "substation", label: "Subestación", type: "substation" },
+      { key: "device_type", label: "Tipo de equipo", type: "select", opts: [["", "Todos"], ["protection_relay", "Relé de protección"], ["smart_meter", "Medidor inteligente"], ["breaker", "Interruptor"]] },
+      lim(200)],
+    url: p => (p.substation ? `/substations/${p.substation}/devices` : "/devices"), query: ["device_type", "limit"],
+    cols: ["asset_id", "substation_code", "device_type", "manufacturer", "model", "active"] },
+  { id: "latest", name: "Mediciones · última lectura (relés)", filters: [
+      { key: "substation", label: "Subestación", type: "substation" },
+      { key: "asset_id", label: "Equipo (relé)", type: "device", devType: "protection_relay" }, lim(200)],
+    url: () => "/telemetry/latest", query: ["substation", "asset_id", "limit"], timeField: "event_time", noServerTime: true,
+    emptyHint: "Esta vista solo muestra lecturas de los últimos 15 min. Si el simulador está detenido aparecerá vacía: usa «Mediciones · serie histórica».",
+    cols: ["asset_id", "substation_code", "variable", "value", "unit", "quality", "event_time", "ingest_time"] },
+  { id: "history", name: "Mediciones · serie histórica (relés)", filters: [
+      { key: "substation", label: "Subestación", type: "substation", local: true },
+      { key: "asset_id", label: "Equipo (relé)", type: "device", devType: "protection_relay", required: true },
+      { key: "variable", label: "Variable", type: "select", opts: VARS_RELAY.map(v => [v, v]) }, lim(1000)],
+    url: () => "/telemetry/history", query: ["asset_id", "variable", "limit"], timeField: "event_time", timeParams: ["start", "end"],
+    cols: ["event_time", "value", "unit", "quality"] },
+  { id: "events", name: "Eventos eléctricos", filters: [
+      { key: "substation", label: "Subestación", type: "substation" },
+      { key: "asset_id", label: "Equipo (relé)", type: "device", devType: "protection_relay" },
+      { key: "event_type", label: "Tipo de evento", type: "select", opts: [["", "Todos"], ["trip", "trip (disparo)"], ["reclose", "reclose (recierre)"], ["overcurrent_alarm", "overcurrent_alarm"]] }, lim(200)],
+    url: () => "/events", query: ["substation", "asset_id", "event_type", "limit"], timeField: "event_time", timeParams: ["since"],
+    cols: ["event_time", "event_type", "severity", "asset_id", "substation_code", "details"] },
+  { id: "trips", name: "Disparos de protección (trips)", filters: [
+      { key: "substation", label: "Subestación", type: "substation" }, lim(200)],
+    url: () => "/events/trips", query: ["substation", "limit"], timeField: "event_time", timeParams: ["since"],
+    cols: ["event_time", "event_type", "severity", "asset_id", "substation_code", "details"] },
+  { id: "breakers", name: "Estado de interruptores", filters: [
+      { key: "substation", label: "Subestación", type: "substation" }, lim(200)],
+    url: () => "/breakers/status", query: ["substation", "limit"], timeField: "event_time", noServerTime: true,
+    cols: ["asset_id", "substation_code", "position", "operations", "event_time"] },
+  { id: "meters", name: "Medidores · perfil de carga", filters: [
+      { key: "substation", label: "Subestación", type: "substation", local: true },
+      { key: "asset_id", label: "Medidor", type: "device", devType: "smart_meter", required: true }, lim(1000)],
+    url: () => "/meters/profiles", query: ["asset_id", "limit"], timeField: "time", hoursParam: true,
+    cols: ["time", "active_energy", "demand"] },
+  { id: "settings", name: "Protección · historial de ajustes", filters: [
+      { key: "asset_id", label: "Equipo (relé)", type: "device", devType: "protection_relay" }, lim(100)],
+    url: () => "/devices/settings/history", query: ["asset_id", "limit"], timeField: "effective_time", noServerTime: true,
+    cols: ["asset_id", "version", "setting_group", "effective_time", "file_id", "params"] },
+  { id: "osc", name: "Oscilografías (archivos COMTRADE)", filters: [
+      { key: "asset_id", label: "Equipo (relé)", type: "device", devType: "protection_relay" }, lim(100)],
+    url: () => "/oscillography", query: ["asset_id", "limit"], timeField: "event_time", noServerTime: true,
+    cols: ["id", "asset_id", "file_type", "size_bytes", "event_time", "object_key", "_download"] },
+  { id: "f_budgets", name: "FinOps · presupuestos", filters: [], url: () => "/finops/budgets", cols: ["name", "scenario", "monthly_budget_usd", "alert_threshold_pct"] },
+  { id: "f_costs", name: "FinOps · costos estimados guardados", filters: [
+      { key: "scenario", label: "Escenario", type: "select", opts: [["", "Todos"], ["gcp_measured", "gcp_measured (medido)"], ["gcp_full_scale", "gcp_full_scale (flota completa)"]] }],
+    url: () => "/finops/costs", query: ["scenario"], cols: ["day", "scenario", "resource", "quantity", "unit", "unit_cost_usd", "est_cost_usd"] },
+  { id: "f_storage", name: "FinOps · almacenamiento por tabla", filters: [], url: () => "/finops/storage", cols: ["table_name", "bytes", "_size"] },
+  { id: "f_report", name: "FinOps · reporte de costos por escenario", filters: [
+      { key: "hours", label: "Ventana de uso medido", type: "select", opts: [["1", "1 h"], ["6", "6 h"], ["24", "24 h"], ["168", "7 días"]] }],
+    url: () => "/finops/report", query: ["hours"],
+    transform: r => Object.entries(r.scenarios).flatMap(([sc, v]) => v.lines.map(l => ({ escenario: sc, recurso: l.resource, cantidad: l.quantity, unidad: l.unit, tarifa_usd: l.unit_cost_usd, costo_usd_mes: l.cost_usd }))),
+    cols: ["escenario", "recurso", "cantidad", "unidad", "tarifa_usd", "costo_usd_mes"] },
+  { id: "f_levers", name: "FinOps · palancas de ahorro", filters: [
+      { key: "hours", label: "Ventana de uso medido", type: "select", opts: [["1", "1 h"], ["6", "6 h"], ["24", "24 h"], ["168", "7 días"]] }],
+    url: () => "/finops/report", query: ["hours"], transform: r => r.levers, cols: ["lever", "total_usd_month", "saving_usd_month"] },
+];
+
+/* ---------- Utilidades ---------- */
+const $ = id => document.getElementById(id);
+const state = { ds: null, mode: "hist", rows: [], sortKey: null, sortDir: 1, timer: null, substations: [], devCache: {} };
+const BADGE = {
+  GOOD: "ok", SUSPECT: "warn", BAD: "bad", CLOSED: "ok", OPEN: "bad", INFO: "ok", WARNING: "warn", CRITICAL: "bad", ERROR: "bad",
+};
+const TIME_KEYS = new Set(["event_time", "ingest_time", "time", "effective_time", "created_at"]);
+
+function pad(n) { return String(n).padStart(2, "0"); }
+function toLocalInput(d) { return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`; }
+function fmtTime(v) { const d = new Date(v); return isNaN(d) ? v : `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`; }
+function fmtBytes(b) { const u = ["B", "KiB", "MiB", "GiB"]; let i = 0; b = Number(b); while (b >= 1024 && i < 3) { b /= 1024; i++; } return b.toFixed(i ? 2 : 0) + " " + u[i]; }
+function el(tag, props = {}, ...kids) { const e = Object.assign(document.createElement(tag), props); kids.forEach(k => e.append(k)); return e; }
+async function api(path) {
+  const r = await fetch(path);
+  if (!r.ok) { let m = ""; try { m = JSON.stringify((await r.json()).detail ?? ""); } catch (_) {} throw new Error(`HTTP ${r.status} en ${path}\n${m}`); }
+  return r.json();
+}
+function showError(msg) { const e = $("err"); e.textContent = msg || ""; e.style.display = msg ? "block" : "none"; }
+
+/* ---------- Filtros dinámicos ---------- */
+async function loadSubstations() {
+  try { state.substations = await api("/substations"); } catch (e) { showError(e.message); }
+}
+async function devicesFor(substation, devType) {
+  const key = `${substation}|${devType}`;
+  if (!state.devCache[key]) {
+    const base = substation ? `/substations/${substation}/devices` : "/devices";
+    state.devCache[key] = await api(`${base}?device_type=${devType}&limit=5000`);
+  }
+  return state.devCache[key];
+}
+function fillSelect(sel, opts, keep) {
+  const prev = keep ? sel.value : null;
+  sel.replaceChildren(...opts.map(([v, t]) => el("option", { value: v, textContent: t })));
+  if (prev && opts.some(([v]) => v === prev)) sel.value = prev;
+}
+function buildFilters() {
+  const box = $("filters"); box.replaceChildren();
+  state.ds.filters.forEach(f => {
+    let input;
+    if (f.type === "number") input = el("input", { type: "number", value: f.def, min: f.min, max: f.max });
+    else input = el("select");
+    input.id = "f_" + f.key; input.dataset.key = f.key;
+    if (f.type === "select") fillSelect(input, f.opts);
+    if (f.type === "substation") fillSelect(input, [["", "Todas"], ...state.substations.map(s => [s.code, `${s.code} · ${s.name}`])]);
+    if (f.type === "device") fillSelect(input, [["", f.required ? "— elige un equipo —" : "Todos"]]);
+    box.append(el("label", {}, f.label + (f.required ? " *" : ""), input));
+  });
+  const subSel = $("f_substation"), devSel = $("f_asset_id");
+  const devFilter = state.ds.filters.find(f => f.type === "device");
+  async function refreshDevices() {
+    if (!devSel) return;
+    try {
+      const list = await devicesFor(subSel ? subSel.value : "", devFilter.devType);
+      fillSelect(devSel, [["", devFilter.required ? "— elige un equipo —" : "Todos"], ...list.map(d => [d.asset_id, `${d.asset_id} (${d.substation_code})`])], true);
+      if (devFilter.required && !devSel.value && list.length) devSel.value = list[0].asset_id;
+    } catch (e) { showError(e.message); }
+  }
+  if (subSel && devSel) subSel.addEventListener("change", refreshDevices);
+  refreshDevices();
+  box.querySelectorAll("select,input").forEach(i => i.addEventListener("keydown", e => { if (e.key === "Enter") run(); }));
+}
+function setMode(m) {
+  state.mode = m;
+  document.querySelectorAll("#modeSeg button").forEach(b => b.classList.toggle("on", b.dataset.mode === m));
+  const hasTime = !!state.ds.timeField;
+  $("refreshWrap").classList.toggle("hidden", m !== "live");
+  $("windowWrap").classList.toggle("hidden", !(m === "live" && hasTime));
+  $("timeRow").classList.toggle("hidden", !(hasTime && m === "hist"));
+  $("liveTag").classList.toggle("on", m === "live");
+  stopTimer();
+  if (m === "live") { run(); startTimer(); } else updateHint();
+}
+function selectDataset(id) {
+  state.ds = DATASETS.find(d => d.id === id);
+  state.rows = []; state.sortKey = null;
+  buildFilters(); setMode(state.mode); render(); showError("");
+  if (state.ds.timeField && $("from").value === "" && state.ds.timeParams) { /* por defecto sin rango */ }
+}
+function updateHint() {
+  const d = state.ds; const parts = [];
+  if (d.timeField && state.mode === "hist") {
+    parts.push(d.timeParams ? "Elige un rango de fecha/hora (sin rango = todo el histórico, hasta «Máx. filas») o filtra por el parámetro representativo (subestación, equipo, variable…)."
+      : d.hoursParam ? "El rango se convierte a «últimas N horas» en el servidor y se recorta aquí al desde/hasta."
+      : "Esta API no filtra por fecha: el rango se aplica sobre las filas devueltas.");
+  }
+  if (state.mode === "live") parts.push("Modo online: se vuelve a consultar automáticamente y se muestra la ventana de tiempo elegida.");
+  $("hint").textContent = parts.join(" ");
+}
+
+/* ---------- Consulta ---------- */
+function currentValues() { const v = {}; document.querySelectorAll("#filters [data-key]").forEach(i => { v[i.dataset.key] = i.value; }); return v; }
+function iso(localStr) { return new Date(localStr).toISOString(); }
+
+async function run() {
+  const d = state.ds; const v = currentValues(); showError("");
+  const miss = d.filters.find(f => f.required && !v[f.key]);
+  if (miss) { showError(`Elige «${miss.label}» antes de consultar.`); return; }
+  const qs = new URLSearchParams();
+  (d.query || []).forEach(k => { if (v[k] !== undefined && v[k] !== "") qs.set(k, v[k]); });
+  let from = null, to = null;
+  if (d.timeField) {
+    if (state.mode === "live") { const mins = Number($("window").value); to = new Date(); from = new Date(to - mins * 60000); }
+    else { if ($("from").value) from = new Date($("from").value); if ($("to").value) to = new Date($("to").value); }
+    if (from && to && from > to) { showError("«Desde» es posterior a «Hasta»."); return; }
+    if (d.timeParams && !d.noServerTime) {
+      const [a, b] = d.timeParams;
+      if (from) qs.set(a, from.toISOString());
+      else if (a === "start") qs.set(a, "2000-01-01T00:00:00Z");   // sin rango = todo el histórico (la API por defecto usa solo 1 h)
+      if (b && to) qs.set(b, to.toISOString());
+      if (b && !to && state.mode === "live") qs.set(b, new Date().toISOString());
+    }
+    if (d.hoursParam) qs.set("hours", Math.min(720, Math.max(1, Math.ceil((Date.now() - (from || new Date(Date.now() - 86400000))) / 3600000))));
+  }
+  $("go").disabled = true;
+  try {
+    let data = await api(d.url(v) + (qs.toString() ? "?" + qs : ""));
+    if (d.transform) data = d.transform(data);
+    if (d.timeField) {
+      const lo = from ? from.getTime() : -Infinity, hi = to ? to.getTime() : Infinity;
+      data = data.filter(r => { const t = new Date(r[d.timeField]).getTime(); return t >= lo && t <= hi; });
+    }
+    state.rows = data;
+    $("info").dataset.at = new Date().toLocaleTimeString();
+    render();
+  } catch (e) { showError(e.message); state.rows = []; render(); }
+  finally { $("go").disabled = false; }
+}
+
+/* ---------- Tabla ---------- */
+function cell(td, key, val, row) {
+  if (key === "_download") { const a = el("a", { className: "dl", textContent: "Descargar" }); a.onclick = () => download(row.id); td.append(a); return; }
+  if (key === "_size") { td.textContent = fmtBytes(row.bytes); td.className = "num"; return; }
+  if (val === null || val === undefined) { td.textContent = "—"; return; }
+  if (TIME_KEYS.has(key)) { td.textContent = fmtTime(val); return; }
+  if (typeof val === "object") { const s = JSON.stringify(val); td.textContent = s; td.title = JSON.stringify(val, null, 2); return; }
+  if (typeof val === "boolean") { td.textContent = val ? "sí" : "no"; return; }
+  if ((key === "quality" || key === "position" || key === "severity") && BADGE[val]) { td.append(el("span", { className: "badge b-" + BADGE[val], textContent: val })); return; }
+  if (typeof val === "number") { td.textContent = Number.isInteger(val) ? String(val) : val.toLocaleString("es-PE", { maximumFractionDigits: 4 }); td.className = "num"; return; }
+  td.textContent = val;
+}
+function render() {
+  const cols = state.ds.cols; const q = $("search").value.trim().toLowerCase();
+  let rows = state.rows;
+  if (q) rows = rows.filter(r => cols.some(c => String(r[c] !== undefined && typeof r[c] === "object" ? JSON.stringify(r[c]) : r[c] ?? "").toLowerCase().includes(q)));
+  if (state.sortKey) {
+    const k = state.sortKey, dir = state.sortDir;
+    rows = [...rows].sort((a, b) => (a[k] > b[k] ? 1 : a[k] < b[k] ? -1 : 0) * dir);
+  }
+  const head = el("tr");
+  cols.forEach(c => {
+    const th = el("th", { textContent: c.startsWith("_") ? (c === "_size" ? "tamaño" : "archivo") : c });
+    if (!c.startsWith("_")) { th.onclick = () => { state.sortDir = state.sortKey === c ? -state.sortDir : 1; state.sortKey = c; render(); }; }
+    if (state.sortKey === c) th.append(el("span", { className: "arrow", textContent: state.sortDir > 0 ? "▲" : "▼" }));
+    head.append(th);
+  });
+  $("thead").replaceChildren(head);
+  if (!rows.length) {
+    $("tbody").replaceChildren(el("tr", {}, Object.assign(el("td", { className: "empty", textContent: state.rows.length ? "Ninguna fila coincide con la búsqueda." : (state.ds.emptyHint || "Sin datos para estos filtros.") }), { colSpan: cols.length })));
+  } else {
+    const frag = document.createDocumentFragment();
+    rows.slice(0, 3000).forEach(r => { const tr = el("tr"); cols.forEach(c => { const td = el("td"); cell(td, c, r[c], r); tr.append(td); }); frag.append(tr); });
+    $("tbody").replaceChildren(frag);
+  }
+  const at = $("info").dataset.at ? ` · actualizado ${$("info").dataset.at}` : "";
+  $("info").textContent = `${rows.length} fila(s)${state.rows.length !== rows.length ? ` de ${state.rows.length}` : ""}${rows.length > 3000 ? " (mostrando 3000)" : ""}${at}`;
+  updateHint();
+}
+async function download(id) {
+  try { const r = await api(`/oscillography/${id}/url`); window.open(r.url, "_blank"); } catch (e) { showError(e.message); }
+}
+function csv() {
+  const cols = state.ds.cols.filter(c => !c.startsWith("_"));
+  const esc = v => { v = v === null || v === undefined ? "" : typeof v === "object" ? JSON.stringify(v) : v; return /[",\n]/.test(v) ? `"${String(v).replace(/"/g, '""')}"` : v; };
+  const text = [cols.join(","), ...state.rows.map(r => cols.map(c => esc(r[c])).join(","))].join("\n");
+  const a = el("a", { href: URL.createObjectURL(new Blob(["﻿" + text], { type: "text/csv" })), download: `${state.ds.id}.csv` });
+  a.click(); URL.revokeObjectURL(a.href);
+}
+
+/* ---------- Online ---------- */
+function startTimer() { stopTimer(); state.timer = setInterval(run, Number($("refresh").value) * 1000); }
+function stopTimer() { if (state.timer) { clearInterval(state.timer); state.timer = null; } }
+
+/* ---------- Arranque ---------- */
+async function health() {
+  try { const h = await api("/health"); $("healthDot").className = "dot ok"; $("healthTxt").textContent = `API ok · v${h.version}`; }
+  catch (_) { $("healthDot").className = "dot bad"; $("healthTxt").textContent = "API no responde"; }
+}
+(async function init() {
+  fillSelect($("dataset"), DATASETS.map(d => [d.id, d.name]));
+  await loadSubstations(); health(); setInterval(health, 15000);
+  $("dataset").onchange = e => selectDataset(e.target.value);
+  document.querySelectorAll("#modeSeg button").forEach(b => b.onclick = () => setMode(b.dataset.mode));
+  $("refresh").onchange = () => { if (state.mode === "live") startTimer(); };
+  $("window").onchange = () => { if (state.mode === "live") run(); };
+  $("go").onclick = run; $("csv").onclick = csv; $("search").oninput = render;
+  $("quick1h").onclick = () => { const n = new Date(); $("to").value = toLocalInput(n); $("from").value = toLocalInput(new Date(n - 3600000)); };
+  $("quick24h").onclick = () => { const n = new Date(); $("to").value = toLocalInput(n); $("from").value = toLocalInput(new Date(n - 86400000)); };
+  $("quickClear").onclick = () => { $("from").value = ""; $("to").value = ""; };
+  selectDataset("history");
+  $("dataset").value = "history";
+  setTimeout(run, 400);
+})();
+</script>
+</body>
+</html>

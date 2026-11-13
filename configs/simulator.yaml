@@ -1,0 +1,24 @@
+mode: functional            # sobreescribible con SIMULATOR_MODE o --mode
+
+modes:
+  functional:               # desarrollo: pocos equipos, ejecucion ligera
+    substations: 3
+    relays: 30
+    meters: 300
+    breakers: 12
+  load:                     # prueba de carga: flota completa
+    substations: 40
+    relays: 4000
+    meters: 50000
+    breakers: 1000
+
+seed: 42
+tick_seconds: 5                      # periodo de muestreo de reles
+meter_profile_every_ticks: 12        # perfil de carga cada N ticks (demo: 60 s; real: 15 min)
+profile_interval_minutes: 15         # intervalo del perfil de carga (para calcular energia)
+fault_probability_per_tick: 0.03     # probabilidad de falla por tick (en toda la flota)
+breaker_reclose_ticks: 3             # ticks hasta recierre
+settings_change_probability_per_tick: 0.01
+publish_initial_settings: true
+oscillography_dir: data/generated/oscillography
+timezone_offset_hours: -5            # Peru, para curvas de carga diarias

@@ -1,0 +1,35 @@
+app:
+  name: electrical-telemetry-platform
+  environment: local
+
+api:
+  default_limit: 100
+  max_limit: 5000
+
+# ---------------------------------------------------------------- FinOps
+# Tarifas: tabla finops.cost_rates (ilustrativas, equivalente GCP). Aqui van supuestos de dimensionamiento.
+finops:
+  monthly_budget_usd: 50
+  retention_days: 30            # retencion de telemetria cruda
+  compress_after_days: 2        # compresion columnar TimescaleDB
+  compression_ratio_assumed: 10 # tipico 8x-20x; mide el real con hypertable_compression_stats
+  default_bytes_per_row: 90     # fila + indice, sin comprimir (se reemplaza por el valor medido)
+  default_message_bytes: 230    # JSON normalizado (se reemplaza por el valor medido)
+  default_file_bytes: 14000     # oscilografia COMTRADE simulada (se reemplaza por el valor medido)
+  consumer_groups: 1            # cuantas suscripciones leen cada mensaje (Pub/Sub cobra entrega)
+  oscillography_retention_days: 90
+
+  # Dimensionamiento cloud equivalente por escenario
+  sizing:
+    gcp_measured:   { db_vcpus: 1, db_memory_gib: 4,  pipeline_vcpus: 1 }
+    gcp_full_scale: { db_vcpus: 8, db_memory_gib: 32, pipeline_vcpus: 8 }
+
+  # Flota completa para proyeccion
+  full_fleet:
+    relays: 4000
+    meters: 50000
+    breakers: 1000
+    relay_variables: 5
+    relay_sample_seconds: 5        # cada cuanto reporta cada rele
+    meter_profile_minutes: 15
+    trips_per_relay_per_month: 0.5

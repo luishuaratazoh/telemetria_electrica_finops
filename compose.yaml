@@ -1,0 +1,228 @@
+# Infraestructura local. Uso por perfiles (ver README):
+#   docker compose --profile core up -d
+#   docker compose --profile core --profile streaming --profile storage up -d
+# FinOps: todos los servicios tienen mem_limit para que el consumo local sea predecible y medible.
+name: electrical-telemetry
+
+x-app-env: &app-env
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: ${POSTGRES_DB}
+  POSTGRES_USER: ${POSTGRES_USER}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+  KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
+  MINIO_ENDPOINT: minio:9000
+  MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+  MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+  MINIO_SECURE: "false"
+  MINIO_PUBLIC_ENDPOINT: localhost:9000   # para URLs de descarga abiertas desde el navegador
+  SIMULATOR_MODE: ${SIMULATOR_MODE:-functional}
+
+services:
+  # ---------------------------------------------------------------- core
+  postgres:
+    image: timescale/timescaledb:2.17.2-pg16
+    container_name: telemetry-postgres
+    profiles: [core]
+    restart: unless-stopped
+    mem_limit: 1g
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      # Los scripts se ejecutan por orden alfabetico, solo en la PRIMERA inicializacion del volumen.
+      - ./docker/postgres/init/00_airflow_db.sql:/docker-entrypoint-initdb.d/00_airflow_db.sql:ro
+      - ./sql/01_create_database.sql:/docker-entrypoint-initdb.d/01_create_database.sql:ro
+      - ./sql/02_create_schemas.sql:/docker-entrypoint-initdb.d/02_create_schemas.sql:ro
+      - ./sql/03_create_tables.sql:/docker-entrypoint-initdb.d/03_create_tables.sql:ro
+      - ./sql/04_create_indexes.sql:/docker-entrypoint-initdb.d/04_create_indexes.sql:ro
+      - ./sql/05_create_views.sql:/docker-entrypoint-initdb.d/05_create_views.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/app/Dockerfile
+    image: electrical-telemetry-app:0.1.0
+    container_name: telemetry-api
+    profiles: [core]
+    restart: unless-stopped
+    mem_limit: 512m
+    command: ["uvicorn", "telemetry_platform.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment: *app-env
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------- streaming
+  redpanda:
+    image: redpandadata/redpanda:v24.2.7
+    container_name: telemetry-redpanda
+    profiles: [streaming]
+    restart: unless-stopped
+    mem_limit: 1g
+    command:
+      - redpanda
+      - start
+      - --mode=dev-container
+      - --smp=1
+      - --memory=768M
+      - --reserve-memory=0M
+      - --overprovisioned
+      - --node-id=0
+      - --check=false
+      - --kafka-addr=internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr=internal://redpanda:9092,external://localhost:19092
+    ports:
+      - "19092:19092"   # Kafka API para clientes en tu maquina (localhost:19092)
+      - "9644:9644"     # metricas / admin
+    volumes:
+      - redpanda_data:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -E 'Healthy:.+true' || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+
+  redpanda-console:
+    image: redpandadata/console:v2.7.2
+    container_name: telemetry-redpanda-console
+    profiles: [streaming]
+    restart: unless-stopped
+    mem_limit: 256m
+    environment:
+      KAFKA_BROKERS: redpanda:9092
+    ports:
+      - "8080:8080"
+    depends_on:
+      redpanda:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------- storage
+  minio:
+    image: cgr.dev/chainguard/minio:latest   # Docker Hub/quay ya no publican MinIO oficial
+    container_name: telemetry-minio
+    user: "0"
+    profiles: [storage]
+    restart: unless-stopped
+    mem_limit: 512m
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+
+  # ---------------------------------------------------------------- monitoring
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: telemetry-prometheus
+    profiles: [monitoring]
+    restart: unless-stopped
+    mem_limit: 384m
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=7d      # FinOps: retencion corta de metricas
+      - --storage.tsdb.path=/prometheus
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: telemetry-grafana
+    profiles: [monitoring]
+    restart: unless-stopped
+    mem_limit: 384m
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./docker/grafana/dashboards:/var/lib/grafana/dashboards:ro
+
+  # ---------------------------------------------------------------- orchestration
+  airflow:
+    image: apache/airflow:2.10.2-python3.12
+    container_name: telemetry-airflow
+    profiles: [orchestration]
+    restart: unless-stopped
+    mem_limit: 2g
+    command: standalone
+    environment:
+      <<: *app-env
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "false"
+      PYTHONPATH: /opt/app/src
+      _PIP_ADDITIONAL_REQUIREMENTS: "polars pydantic-settings minio pyyaml"
+    ports:
+      - "8081:8080"
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./src:/opt/app/src:ro
+      - ./configs:/opt/app/configs:ro
+      - airflow_data:/opt/airflow
+
+  # ---------------------------------------------------------------- app (opcional: correr pipeline en contenedores)
+  consumer:
+    image: electrical-telemetry-app:0.1.0
+    build:
+      context: .
+      dockerfile: docker/app/Dockerfile
+    container_name: telemetry-consumer
+    profiles: [app]
+    restart: unless-stopped
+    mem_limit: 512m
+    command: ["python", "scripts/run_consumer.py"]
+    environment: *app-env
+    ports:
+      - "8001:8001"
+
+  simulator:
+    image: electrical-telemetry-app:0.1.0
+    build:
+      context: .
+      dockerfile: docker/app/Dockerfile
+    container_name: telemetry-simulator
+    profiles: [app]
+    restart: "no"
+    mem_limit: 1g
+    command: ["python", "scripts/run_simulator.py"]
+    environment: *app-env
+    ports:
+      - "8002:8002"
+
+volumes:
+  pg_data:
+  redpanda_data:
+  minio_data:
+  prometheus_data:
+  grafana_data:
+  airflow_data:
